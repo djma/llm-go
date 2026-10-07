@@ -88,15 +88,23 @@ class Analysis:
         return self.score_lead if color == BLACK else -self.score_lead
 
 
-def move_loss(analysis: Analysis, move: int) -> tuple[float, float] | None:
+def move_loss(
+    analysis: Analysis, move: int, reference: Analysis | None = None
+) -> tuple[float, float] | None:
     """Win-rate and score lost by ``move`` against KataGo's best move, for the mover.
 
-    None if KataGo did not search ``move`` (ask again with ``allow_moves``).
+    None if KataGo did not search ``move``. To score such a move, ask again
+    with ``allow_moves=[move]`` and pass the first (unrestricted) analysis as
+    ``reference``: a restricted search's own best move is ``move`` itself, so
+    without ``reference`` the loss would always be zero.
     """
     info = analysis.move_info(move)
     if info is None:
         return None
-    best = analysis.best
+    ref = analysis if reference is None else reference
+    if ref.to_move != analysis.to_move:
+        raise ValueError("reference analyses a different player to move")
+    best = ref.best
     sign = 1.0 if analysis.to_move == BLACK else -1.0
     return sign * (best.winrate - info.winrate), sign * (
         best.score_lead - info.score_lead
@@ -108,12 +116,13 @@ def is_mistake(
     move: int,
     max_winrate_drop: float = MAX_WINRATE_DROP,
     max_score_drop: float = MAX_SCORE_DROP,
+    reference: Analysis | None = None,
 ) -> bool | None:
     """True if ``move`` loses at least ``max_winrate_drop`` win rate or ``max_score_drop`` points.
 
-    None if KataGo did not search ``move``.
+    None if KataGo did not search ``move``. See ``move_loss`` for ``reference``.
     """
-    loss = move_loss(analysis, move)
+    loss = move_loss(analysis, move, reference)
     if loss is None:
         return None
     wr, score = loss
