@@ -135,6 +135,18 @@ class Board:
         self._ko_color = EMPTY
         self._history.clear()
 
+    def set_ko(self, p: int | None) -> None:
+        """Ban the player to move from ``p`` by simple ko (None clears the ban).
+
+        For restoring a saved position; ``play`` sets ko by itself.
+        """
+        if p is None:
+            self._ko = -1
+            self._ko_color = EMPTY
+        else:
+            self._ko = _TO_PAD[p]
+            self._ko_color = self.to_move
+
     def copy(self) -> "Board":
         b = Board.__new__(Board)
         b._cells = self._cells.copy()
