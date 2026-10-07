@@ -97,6 +97,28 @@ def test_allow_moves():
     assert [m.move for m in a.moves] == [parse_gtp("K10")]
 
 
+def test_restricted_move_scored_against_reference():
+    k10 = parse_gtp("K10")
+    with engine() as kg:
+        full = kg.analyze()
+        only = kg.analyze(allow_moves=[k10])
+    # Alone, the restricted search sees no loss: K10 is its own best move.
+    assert move_loss(only, k10) == (0.0, 0.0)
+    # Against the unrestricted best (Q16: 0.72, 5.5) K10 (0.40, -3.0) loses a lot.
+    wr, score = move_loss(only, k10, reference=full)
+    assert wr == pytest.approx(0.32)
+    assert score == pytest.approx(8.5)
+    assert is_mistake(only, k10, reference=full) is True
+
+
+def test_reference_must_match_player_to_move():
+    with engine() as kg:
+        full = kg.analyze()
+        other = kg.analyze([(BLACK, parse_gtp("K10"))], allow_moves=[parse_gtp("D4")])
+    with pytest.raises(ValueError):
+        move_loss(other, parse_gtp("D4"), reference=full)
+
+
 def test_analyze_turns():
     moves = [(BLACK, parse_gtp("Q16")), (WHITE, parse_gtp("D4"))]
     with engine() as kg:
