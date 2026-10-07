@@ -7,11 +7,17 @@ from goqueen.data.curriculum.core import (
     decode_position,
     encode_position,
 )
-from goqueen.data.curriculum.generate import STAGE_TASKS, generate, make_example
+from goqueen.data.curriculum.generate import (
+    STAGE_TASKS,
+    TASK_NAMES,
+    generate,
+    make_example,
+)
 
 __all__ = [
     "FORMATS",
     "STAGE_TASKS",
+    "TASK_NAMES",
     "Example",
     "Format",
     "decode_position",

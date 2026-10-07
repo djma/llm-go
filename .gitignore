@@ -16,3 +16,6 @@ wheels/
 *.bin.gz
 *.sgf.gz
 .env
+
+# KataGo writes logs to the working directory
+analysis_logs/
