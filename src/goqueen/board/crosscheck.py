@@ -145,11 +145,12 @@ def random_games(
     report: Report,
     sample: float = 0.1,
     pass_rate: float = 0.01,
+    max_moves: int = 500,
 ) -> int:
     """Check positions of random games until ``n_positions`` are checked. Returns games played.
 
-    Each position is checked with probability ``sample``, and always when a ko
-    is on the board, so the checks spread over many games.
+    Each position is checked with probability ``sample`` (0.5 when a ko is on
+    the board), so the checks spread over many games of at most ``max_moves``.
     """
     from goqueen.data.curriculum.positions import random_move
 
@@ -160,8 +161,13 @@ def random_games(
         board = Board()
         mill = boards.Board(SIZE)
         mill_ko = None
-        while board.consecutive_passes < 2 and report.positions < n_positions:
-            if mill_ko is not None or rng.random() < sample:
+        # Random games can cycle through kos for ever, so cap their length.
+        while (
+            board.consecutive_passes < 2
+            and board.move_count < max_moves
+            and report.positions < n_positions
+        ):
+            if rng.random() < (0.5 if mill_ko is not None else sample):
                 check_position(board, mill, mill_ko, report)
             p = PASS if rng.random() < pass_rate else random_move(board, rng)
             if p == PASS:
