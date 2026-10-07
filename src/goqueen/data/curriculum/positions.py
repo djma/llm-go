@@ -4,7 +4,7 @@ import random
 from collections.abc import Iterator
 from pathlib import Path
 
-from goqueen.board import EMPTY, NUM_POINTS, PASS, SIZE, Board, Color
+from goqueen.board import BLACK, EMPTY, NUM_POINTS, PASS, SIZE, WHITE, Board, Color
 from goqueen.data.sgf import SGFError, read_file, replay
 
 
@@ -77,3 +77,84 @@ def sgf_positions(files: list[Path], rng: random.Random) -> Iterator[Board]:
         board = sgf_position(rng.choice(files), rng)
         if board is not None:
             yield board
+
+
+# ----------------------------------------------------------------------
+# Capturing races
+
+
+def _symmetry(p: int, k: int) -> int:
+    """One of the 8 symmetries of the board (k in 0..7)."""
+    c, r = p % SIZE, p // SIZE
+    if k & 1:
+        c = SIZE - 1 - c
+    if k & 2:
+        r = SIZE - 1 - r
+    if k & 4:
+        c, r = r, c
+    return r * SIZE + c
+
+
+def race_position(
+    rng: random.Random, max_tries: int = 200
+) -> tuple[Board, int, int] | None:
+    """A closed capturing race on the edge: (board, Black race stone, White race stone).
+
+    The two groups may not touch; ``race`` returns None for those.
+
+    Layout before a random symmetry, columns from x0 on the first lines:
+    White wall | Black race | middle | White race | Black wall. Middle cells
+    are shared liberties or stones of either race group; random gaps in the
+    walls give outside liberties. The player to move is random. Only
+    positions that pass ``race_is_closed`` are returned.
+    """
+    from goqueen.board.tactics import race_is_closed
+
+    for _ in range(max_tries):
+        h = rng.randint(2, 4)
+        x0 = rng.randint(1, SIZE - 8)
+        cells: dict[tuple[int, int], Color] = {}
+        black_race = [(x0 + 1, y) for y in range(h)]
+        white_race = [(x0 + 3, y) for y in range(h)]
+        for xy in black_race:
+            cells[xy] = BLACK
+        for xy in white_race:
+            cells[xy] = WHITE
+        middle = [(x0 + 2, y) for y in range(h)]
+        for i, xy in enumerate(middle):
+            top = i == h - 1
+            pick = rng.random()
+            if top or pick < 0.25:
+                cells[xy] = BLACK if rng.random() < 0.5 else WHITE
+            elif pick < 0.4:
+                cells[xy] = BLACK
+            elif pick < 0.55:
+                cells[xy] = WHITE
+            # else: empty, a shared liberty
+        if not any(xy in cells for xy in middle):
+            continue
+        # Walls: each empty cell next to exactly one colour of race stone gets the other colour.
+        race_cells = dict(cells)
+        for x in range(x0 - 1, x0 + 6):
+            for y in range(h + 2):
+                if (x, y) in cells or not (0 <= x < SIZE):
+                    continue
+                touching = {
+                    race_cells[n]
+                    for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+                    if n in race_cells
+                }
+                if len(touching) == 1 and rng.random() > 0.2:
+                    cells[(x, y)] = touching.pop().opponent
+        board = Board()
+        k = rng.randrange(8)
+        for (x, y), color in cells.items():
+            board.set_stone(_symmetry(y * SIZE + x, k), color)
+        board.to_move = rng.choice((BLACK, WHITE))
+        a = _symmetry(black_race[0][1] * SIZE + black_race[0][0], k)
+        b = _symmetry(white_race[0][1] * SIZE + white_race[0][0], k)
+        if board[a] != BLACK or board[b] != WHITE:
+            continue
+        if race_is_closed(board, a, b):
+            return board, a, b
+    return None

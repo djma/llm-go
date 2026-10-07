@@ -4,16 +4,18 @@ from collections import Counter
 
 import pytest
 
-from goqueen.board import BLACK, WHITE, Board, parse_gtp
+from goqueen.board import BLACK, PASS, WHITE, Board, parse_gtp
 from goqueen.data.curriculum import (
     FORMATS,
     STAGE_TASKS,
+    TASK_NAMES,
     Format,
     decode_position,
     encode_position,
     generate,
     make_example,
 )
+from goqueen.data.curriculum.generate import line_text, random_line
 from goqueen.data.curriculum.positions import own_eye, random_play, random_position
 from goqueen.data.curriculum.stage2 import (
     atari_moves,
@@ -211,10 +213,79 @@ def test_generate_is_deterministic():
 
 
 def test_generate_covers_stages_tasks_formats():
-    examples = generate(random_position, 600, seed=0)
-    assert {e.stage for e in examples} == {1, 2}
-    assert {e.task for e in examples} == {name for _, name in ALL}
+    examples = generate(random_position, 1500, seed=0, stages=(1, 2, 3, 4))
+    assert {e.stage for e in examples} == {1, 2, 3, 4}
+    for stage in (1, 2, 3, 4):
+        assert {e.task for e in examples if e.stage == stage} == set(TASK_NAMES[stage])
     assert {e.format for e in examples} == {str(f) for f in FORMATS}
+
+
+def test_line_examples_replay_to_the_answer():
+    # Stage 3: replay the stored line on the stored position and recompute the answer.
+    for ex in generate(random_position, 300, seed=5, stages=(3,)):
+        assert 1 <= len(ex.line) <= 12
+        assert ex.question.startswith("After ")
+        if ex.task == "stone_count" and ex.format == "open":
+            b = decode_position(ex.position)
+            for m in ex.line:
+                b.play(parse_gtp(m))
+            color = BLACK if "Black stones" in ex.question.split(": ", 1)[1] else WHITE
+            assert ex.answer == str(b.count(color))
+
+
+def test_line_text():
+    b = Board()
+    assert (
+        line_text(b, [parse_gtp("Q16"), PASS, parse_gtp("D4")])
+        == "Black Q16, White pass, Black D4"
+    )
+
+
+def test_random_line_does_not_change_board():
+    b = random_position(random.Random(2), 50, 60)
+    before = encode_position(b)
+    line = random_line(b, random.Random(3), 12)
+    assert len(line) == 12
+    assert encode_position(b) == before
+
+
+def test_stage4_no_line_tasks():
+    examples = generate(random_position, 400, seed=1, stages=(4,))
+    ladder = [e for e in examples if e.task == "ladder"]
+    race = [e for e in examples if e.task == "race"]
+    assert ladder and race
+    assert all(e.line == [] for e in ladder + race)
+    assert {e.answer for e in race if e.format == "open"} <= {
+        "Black",
+        "White",
+        "neither (seki)",
+    }
+
+
+def test_race_answers_are_balanced():
+    from goqueen.data.curriculum.stage4 import make_race_position
+
+    rng = random.Random(0)
+    results = Counter(make_race_position(rng)[3] for _ in range(300))
+    assert len(results) == 3
+    assert min(results.values()) >= 60, results
+
+
+def test_race_question_matches_solver():
+    from goqueen.board.tactics import race
+    from goqueen.data.curriculum.stage4 import make_race_position, race_question
+
+    rng = random.Random(1)
+    for _ in range(30):
+        board, black, white, result = make_race_position(rng)
+        assert race(board, black, white) == result
+        _, a = race_question(board, black, white, rng, Format.OPEN)
+        assert (
+            a
+            == {"BLACK": "Black", "WHITE": "White", "NEITHER": "neither (seki)"}[
+                result.name
+            ]
+        )
 
 
 def test_answers_match_decoded_position():
